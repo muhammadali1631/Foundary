@@ -808,6 +808,7 @@ export default function Home() {
               {[{icon:FiGithub, link: 'https://github.com/muhammadali1631'}, {icon:FiTwitter, link: "https://x.com/Alishahzad2000M"}, {icon:FiLinkedin, link: "https://www.linkedin.com/in/ali-web-dev/"}, {icon:Mail, link: "mailto:m.alishahzad2004@gmail.com"}].map((Icon, i) => (
                 <a
                   key={Icon.link}
+                  target="_blank"
                   href={Icon.link}
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-foreground"
                 >
