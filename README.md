@@ -1,36 +1,126 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Foundary — AI App Builder
+
+Turn a prompt into a living app. Describe what you want, and Foundary writes the code, picks the packages, and renders a live preview — right inside your browser.
+
+## Features
+
+- **AI app generation** from natural language prompts (powered by Gemini)
+- **Live preview** with Sandpack — see and run your app instantly in the browser
+- **Improve with Agent** — send feedback and let Cline-like AI iterate on the generated code
+- **Chat-first workspace** with a chat panel and a code/preview panel (responsive, v0-style tabs on mobile)
+- **One-click export** — download the generated app as a Vite + React project (`zip` with `package.json`, `index.html`, and `.jsx` sources)
+- **Credits & plans** — free credits per user, upgrade to Pro/Starter via the pricing modal
+- **Projects & history** — every workspace is saved, revisit or share later
+- **Auth** handled by Clerk (sign in / sign up / user account)
+- Rate limiting & abuse protection via Arcjet, data storage via PostgreSQL (Prisma), file uploads via Supabase Storage
+
+## Tech Stack
+
+- [Next.js](https://nextjs.org) 16 (App Router)
+- [React](https://react.dev) 19 + TypeScript
+- [Tailwind CSS](https://tailwindcss.com) v4 + shadcn/ui-style components
+- [Motion](https://motion.dev) (framer-motion) & [Lenis](https://github.com/darkroomengineering/lenis) for smooth, cinematic scrolling
+- [Sandpack](https://sandpack.codesandbox.io) for in-browser code editing & preview
+- [Prisma](https://www.prisma.io) + PostgreSQL
+- [Clerk](https://clerk.com) auth
+- [Arcjet](https://arcjet.com) security
+- [Gemini](https://ai.google.dev) (`@google/genai`) for code generation
+- [JSZip](https://stuk.github.io/jszip/) for project export
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- A PostgreSQL database (local or hosted, e.g. Neon, Vercel Postgres)
+- Accounts/keys for the services below
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+This runs `prisma generate` automatically after install.
+
+### 2. Configure environment variables
+
+Rename/copy your `.env` file and fill in the values:
+
+```env
+# Clerk (https://clerk.com)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+CLERK_SIGN_IN_URL=/sign-in
+CLERK_SIGN_UP_URL=/sign-up
+
+# PostgreSQL connection string (used by Prisma)
+DATABASE_URL=
+
+# Gemini API key for code generation
+GEMINI_API_KEY=
+
+# Arcjet protection
+ARCJET_KEY=
+
+# Supabase (file/image uploads)
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+### 3. Set up the database
+
+```bash
+npx prisma migrate dev
+# or, to sync the schema directly:
+npx prisma db push
+npx prisma generate
+```
+
+### 4. Run the dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command                | Description                          |
+| ---------------------- | ------------------------------------ |
+| `npm run dev`          | Start the development server         |
+| `npm run build`        | Create a production build            |
+| `npm run start`        | Start the production server          |
+| `npm run lint`         | Run ESLint                           |
+| `npm run typecheck`    | Run TypeScript checks (`tsc --noEmit`) |
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/
+  (main)/                 # Authenticated pages (workspace, projects)
+  (auth)/                 # Clerk sign-in / sign-up pages
+  api/                    # Route handlers (gen-ai-code, improve, ...)
+  page.tsx                # Public landing page
+  not-found.tsx           # Custom 404 page
+components/
+  ChatPenal.tsx           # Chat panel (prompt + AI responses)
+  CodePenal.tsx           # Code/preview panel + zip export
+  WorkspaceClient.tsx     # Responsive workspace layout
+prisma/
+  schema.prisma           # User & Workspace models
+lib/
+  constants.ts            # Plans, credits, app-wide config
+  checkUser.ts            # Creates/updates the DB user from Clerk
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## How It Works
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Sign in and describe the app you want (or use a suggestion).
+2. Foundary streams a response: it writes the code and installs the right packages.
+3. Watch the live preview update; switch messages to come back to an earlier version.
+4. Ask **Improve with Agent** with natural-language feedback to refine the result.
+5. Hit **Download** to export a runnable Vite + React project, or create a new workspace to start again.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+.

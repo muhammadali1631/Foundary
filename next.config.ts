@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: [
+    "@cline/sdk",
+    "@cline/core",
+    "@cline/agents",
+    "@cline/llms",
+    "@cline/shared",
+  ],
+  allowedDevOrigins: ['192.168.100.89'],
 };
 
 export default nextConfig;
