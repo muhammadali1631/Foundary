@@ -22,6 +22,29 @@ import { useUser } from "@clerk/nextjs";
 import { createClient } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
+
+function MarkdownCode({
+  className,
+  children,
+  node: _node,
+  ...props
+}: {
+  className?: string;
+  children?: React.ReactNode;
+  node?: unknown;
+}) {
+  return (
+    <code
+      className={cn(
+        "rounded-md border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 align-middle font-mono text-[11px] font-semibold text-emerald-700 dark:border-emerald-400/20 dark:text-emerald-300",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </code>
+  );
+}
 interface ChatPenalProps {
   messages: Message[];
   isGenerating: boolean;
@@ -271,13 +294,19 @@ const ChatPenal = ({
                             </div>
 
                             <p className="text-[12px] leading-relaxed text-muted-foreground wrap-break-word">
-                              {msg.content}
+                              <span className="[&_p]:my-1">
+                                <ReactMarkdown components={{ code: MarkdownCode }}>
+                                  {msg.content}
+                                </ReactMarkdown>
+                              </span>
                               <span className="ml-0.5 inline-block h-3 w-0.5 animate-[blink_1s_ease-in-out_infinite] bg-emerald-500 align-middle dark:bg-emerald-400" />
                             </p>
                           </div>
                         ) : (
-                          <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground/80 dark:prose-invert wrap-break-word [&_code]:rounded [&_code]:bg-emerald-500/10 [&_code]:px-1 [&_code]:text-emerald-600 [&_code]:text-xs dark:[&_code]:bg-emerald-400/10 dark:[&_code]:text-emerald-300 [&_li]:my-0.5 [&_p]:my-1 [&_ul]:my-1 ">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground/80 dark:prose-invert wrap-break-word [&_li]:my-0.5 [&_p]:my-1 [&_ul]:my-1 ">
+                            <ReactMarkdown components={{ code: MarkdownCode }}>
+                              {msg.content}
+                            </ReactMarkdown>
                           </div>
                         )}
                       </div>
