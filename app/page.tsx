@@ -40,6 +40,7 @@ import {
 } from "@/components/motion-primitives";
 import { EmberBackground } from "@/components/EmberBackground";
 import { AnimatedGradient } from "@/components/AnimatedGradient";
+import StructuredData from "@/components/StructuredData";
 
 const CONSOLE_LINES = [
   "> foundary create kanban-board",
@@ -48,6 +49,50 @@ const CONSOLE_LINES = [
   "  ✓ building 3 columns…",
   "  ✓ rendering live preview…",
 ];
+
+const FAQ_ITEMS = [
+  {
+    q: "What is Foundary?",
+    a: "Foundary is an AI app builder that turns a plain-English prompt into a working React + Tailwind application. It writes the code, installs the right npm packages, and renders a live preview right inside your browser — no setup required.",
+  },
+  {
+    q: "How does the AI app generator work?",
+    a: "You describe the app you want, and Foundary's AI (powered by Gemini 3.5 Flash) writes the code, picks the dependencies, and streams back a live preview in seconds. You can keep chatting to iterate on your app and the AI remembers the whole conversation.",
+  },
+  {
+    q: "Do I need coding experience to use Foundary?",
+    a: "No. Anyone can describe an app idea in plain language and get a working result. If you do know how to code, you can open the full source in the built-in editor and tweak it directly.",
+  },
+  {
+    q: "Is Foundary free to use?",
+    a: "Yes. You get 10 free app generations when you sign up — no credit card required. Starter costs $9/month for 50 generations and Pro costs $29/month for 150 generations with priority AI.",
+  },
+  {
+    q: "What can I build with an AI website builder like Foundary?",
+    a: "Dashboards, kanban boards, weather apps, finance trackers, landing pages, portfolio sites, productivity tools, and much more. If you can describe it, Foundary can generate a working first version of it.",
+  },
+  {
+    q: "Can I export the code that Foundary generates?",
+    a: "Yes. One click downloads your app as a Vite + React project — a zip file containing package.json, index.html, and all the .jsx source files — ready to run or deploy anywhere.",
+  },
+  {
+    q: "How is Foundary different from other AI website builders?",
+    a: "Foundary is code-first: you get real React + Tailwind source code you own and can export, a live preview powered by Sandpack, smart npm package validation, AI error recovery, and image-aware prompts that respect your screenshots.",
+  },
+];
+
+const FAQ_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ_ITEMS.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: f.a,
+    },
+  })),
+};
 
 function Stat({
   value,
@@ -138,6 +183,7 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen overflow-x-clip bg-background">
+      <StructuredData data={FAQ_SCHEMA} />
       {/* ══ Hero — split editorial ═══════════════════════════════════════ */}
       <section
         ref={heroRef}
@@ -201,8 +247,10 @@ export default function Home() {
               transition={{ duration: 0.7, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
               className="mt-6 w-[80%] sm:w-auto max-w-lg text-left text-base leading-relaxed text-muted-foreground sm:text-lg"
             >
-              Describe what you want to build. AI writes the code, picks the
-              packages, and renders a live preview — all inside your browser.
+              Foundary is the AI app builder that turns your words into code.
+              Describe what you want to build — the AI writes the React +
+              Tailwind code, picks the packages, and renders a live preview, all
+              inside your browser.
             </motion.p>
 
             <motion.div
@@ -733,6 +781,41 @@ export default function Home() {
         </MotionReveal>
       </section>
 
+      {/* ══ FAQ ═════════════════════════════════════════════════════════ */}
+      <section
+        id="faq"
+        className="relative scroll-mt-20 border-t border-border/40 bg-gradient-to-b from-transparent via-emerald-500/[0.03] to-transparent px-4 py-24 sm:px-6"
+      >
+        <div className="relative mx-auto grid max-w-6xl gap-12 lg:grid-cols-[minmax(0,340px)_1fr]">
+          <div className="lg:sticky lg:top-28 lg:self-start">
+            <MotionReveal>
+              <SectionLabel>FAQ</SectionLabel>
+              <SectionHeading gray="Common" blue="questions" />
+              <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground/80">
+                Everything you need to know about building AI apps with
+                Foundary — the free AI app builder with a live preview.
+              </p>
+            </MotionReveal>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {FAQ_ITEMS.map((item, i) => (
+              <MotionReveal key={item.q} variants={fadeUp} delay={i * 0.04}>
+                <details className="group rounded-2xl border border-border/50 bg-card/60 p-6 backdrop-blur-xl transition-colors duration-300 open:border-emerald-500/40">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-heading text-base font-semibold tracking-tight text-foreground selection:bg-emerald-500/20">
+                    {item.q}
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-90 group-open:text-emerald-500" />
+                  </summary>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {item.a}
+                  </p>
+                </details>
+              </MotionReveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ══ CTA ═════════════════════════════════════════════════════════ */}
       <section className="px-4 pb-24 sm:px-6">
         <MotionReveal variants={scaleIn} className="mx-auto max-w-6xl">
@@ -809,6 +892,7 @@ export default function Home() {
                 <a
                   key={Icon.link}
                   target="_blank"
+                  rel="noopener noreferrer"
                   href={Icon.link}
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-foreground"
                 >
@@ -821,7 +905,7 @@ export default function Home() {
           {[
             {
               title: "Product",
-              links: ["Features", "How it works", "Pricing"],
+              links: ["Features", "How it works", "Pricing", "FAQ"],
             },
             // {
             //   title: "Resources",

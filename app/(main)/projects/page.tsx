@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ArrowRight, FolderKanban, Zap } from "lucide-react";
 import Link from "next/link";
@@ -7,6 +8,14 @@ import { BlueTitle } from "@/components/reusable";
 import { getUserProjects } from "@/actions/projects";
 import { ProjectCard } from "@/components/ProjectCard";
 import { AnimatedGradient } from "@/components/AnimatedGradient";
+
+export const metadata: Metadata = {
+  title: "Projects",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 

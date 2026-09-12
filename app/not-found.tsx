@@ -1,6 +1,15 @@
 import { ArrowLeft, Compass, Home } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { AnimatedGradient } from "@/components/AnimatedGradient";
+
+export const metadata: Metadata = {
+  title: "Page not found",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default function NotFound() {
   return (

@@ -1,8 +1,17 @@
 import { getWorkspaceById, getWorkspaceUser } from "@/actions/workspace";
 import WorkspaceClient from "@/components/WorkspaceClient";
 import { auth } from "@clerk/nextjs/server";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import React from "react";
+
+export const metadata: Metadata = {
+  title: "Workspace",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 interface WorkspacePageProps {
   searchParams: Promise<{
