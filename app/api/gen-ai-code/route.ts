@@ -40,6 +40,136 @@ RULES:
 9. Keep code clean, readable, and production-quality.
 10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
 
+/**
+ * JSON schema used to constrain the model output.
+ *
+ * Passing this to the SDK's `responseJsonSchema` forces Gemini to emit
+ * schema-valid JSON, which prevents the "Invalid JSON" crashes that
+ * happened when file contents (quotes/newlines) were not escaped correctly
+ * or when the response was otherwise malformed.
+ */
+const AI_RESPONSE_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    assistantMessage: {
+      type: "string",
+      description:
+        "Brief explanation of what you built or changed.",
+    },
+    title: {
+      type: "string",
+      description:
+        "Short 2-4 word human readable title for the app.",
+    },
+    files: {
+      type: "object",
+      description:
+        "Map of file path -> { code }. The entry point is always /App.js.",
+      additionalProperties: {
+        type: "object",
+        properties: {
+          code: {
+            type: "string",
+            description:
+              "Complete contents of the file, with newlines and quotes properly escaped.",
+          },
+        },
+        required: ["code"],
+      },
+    },
+    dependencies: {
+      type: "object",
+      description:
+        "Map of npm package name -> version. Never include react, react-dom or tailwindcss.",
+      additionalProperties: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "assistantMessage",
+    "title",
+    "files",
+    "dependencies",
+  ],
+  propertyOrdering: [
+    "assistantMessage",
+    "title",
+    "files",
+    "dependencies",
+  ],
+} as const;
+
+type ParsedAIResponse = {
+  assistantMessage: string;
+  title?: string;
+  files: Record<string, { code: string }>;
+  dependencies: Record<string, string>;
+};
+
+/**
+ * Best-effort cleanup of a model response before parsing.
+ *
+ * Handles the common cases:
+ *  - Markdown code fences around the JSON
+ *  - Leading/trailing prose before/after the JSON object
+ */
+function extractJsonCandidate(text: string): string {
+  let value = text.trim();
+
+  const fenced = value.match(
+    /^```(?:json)?\s*([\s\S]*?)\s*```$/i,
+  );
+
+  if (fenced) {
+    value = fenced[1].trim();
+  }
+
+  const firstBrace = value.indexOf("{");
+  const lastBrace = value.lastIndexOf("}");
+
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    value = value.slice(firstBrace, lastBrace + 1);
+  }
+
+  return value.trim();
+}
+
+/**
+ * Parse the model output into our expected shape.
+ *
+ * Tries a direct parse first, then a cleaned-up candidate. Throws if the
+ * value cannot be parsed at all.
+ */
+function parseAIResponse(raw: string): ParsedAIResponse {
+  const candidates = [raw, extractJsonCandidate(raw)];
+
+  let lastError: unknown;
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    try {
+      const parsed = JSON.parse(candidate) as ParsedAIResponse;
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        parsed.files &&
+        typeof parsed.files === "object"
+      ) {
+        return parsed;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Unable to parse AI response");
+}
+
 function extractThoughtLabel(text: string): string | null {
   const boldMatch = text.match(/\*\*([^*]{4,60})\*\*/);
 
@@ -192,6 +322,20 @@ async function generateWithModel(
 
         responseMimeType: "application/json",
 
+        /**
+         * Constrain the model to schema-valid JSON.
+         * This is what prevents the "Invalid JSON" failures.
+         */
+        responseJsonSchema:
+          AI_RESPONSE_JSON_SCHEMA,
+
+        /**
+         * Large apps can easily exceed the default output budget.
+         * A truncated response is itself invalid JSON, so allow the
+         * maximum practical output size.
+         */
+        maxOutputTokens: 65536,
+
         thinkingConfig: {
           includeThoughts: true,
         },
@@ -202,6 +346,18 @@ async function generateWithModel(
   let lastEmitTime = 0;
 
   for await (const chunk of geminiStream) {
+    const finishReason =
+      chunk.candidates?.[0]?.finishReason;
+
+    if (
+      finishReason &&
+      finishReason === "MAX_TOKENS"
+    ) {
+      console.warn(
+        `[gen-ai-code] ${model} hit MAX_TOKENS — response may be truncated.`,
+      );
+    }
+
     const parts =
       chunk.candidates?.[0]?.content?.parts ?? [];
 
@@ -501,37 +657,74 @@ export async function POST(
            * PARSE AI RESPONSE
            * ========================================
            */
-          let parsed: {
-            assistantMessage: string;
-            title?: string;
-            files: Record<
-              string,
-              { code: string }
-            >;
-            dependencies: Record<
-              string,
-              string
-            >;
-          };
+          let parsed: ParsedAIResponse;
 
           try {
-            parsed =
-              JSON.parse(accumulated);
+            parsed = parseAIResponse(accumulated);
           } catch (error) {
             console.error(
               "[gen-ai-code] Invalid JSON:",
               error,
             );
 
-            enqueue(
-              sseEvent("error", {
-                message:
-                  "AI returned invalid JSON. Please try again.",
-              }),
+            /**
+             * The primary output was malformed or truncated.
+             * Ask a fast model to repair it into valid JSON
+             * before giving up, so the user doesn't lose a generation.
+             */
+            console.warn(
+              "[gen-ai-code] Attempting JSON repair...",
             );
 
-            controller.close();
-            return;
+            try {
+              const repairResponse =
+                await ai.models.generateContent({
+                  model:
+                    "gemini-3.5-flash-lite",
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [
+                        {
+                          text:
+                            "The following text is meant to be a single valid JSON object matching the required schema, but it is malformed or truncated. " +
+                            "Return ONLY the corrected, complete, valid JSON object. Do not include markdown fences or any commentary.\n\n" +
+                            accumulated,
+                        },
+                      ],
+                    },
+                  ],
+                  config: {
+                    responseMimeType:
+                      "application/json",
+
+                    responseJsonSchema:
+                      AI_RESPONSE_JSON_SCHEMA,
+
+                    temperature: 0,
+                    maxOutputTokens: 65536,
+                  },
+                });
+
+              parsed = parseAIResponse(
+                repairResponse.text ?? "",
+              );
+            } catch (repairError) {
+              console.error(
+                "[gen-ai-code] JSON repair failed:",
+                repairError,
+              );
+
+              enqueue(
+                sseEvent("error", {
+                  message:
+                    "AI returned invalid JSON. Please try again.",
+                }),
+              );
+
+              controller.close();
+              return;
+            }
           }
 
           const {

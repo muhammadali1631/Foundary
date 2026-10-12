@@ -1,12 +1,27 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
 import { motion } from "motion/react";
 
+const subscribe = () => () => {};
+
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
+
+  /**
+   * `false` during SSR and the first hydration render, `true` afterwards.
+   * This keeps the server and client markup identical (it lets us avoid
+   * the theme-based hydration mismatch) without setState-in-effect.
+   */
+  const mounted = useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false,
+  );
+
+  const isDark = mounted && resolvedTheme === "dark";
 
   return (
     <motion.button
