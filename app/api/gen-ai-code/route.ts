@@ -411,6 +411,82 @@ async function generateWithModel(
   return accumulated;
 }
 
+/**
+ * Run one model end-to-end: stream the response, parse it into our
+ * expected shape, and try the JSON-repair pass if parsing fails.
+ *
+ * This is the per-model unit that the caller retries on the fallback
+ * model, mirroring how `app/api/improve/route.ts` runs an agent per
+ * model.
+ */
+async function generateAndParse(
+  model: string,
+  contents: ReturnType<typeof buildContents>,
+  enqueue: (chunk: string) => void,
+): Promise<ParsedAIResponse> {
+  const accumulated = await generateWithModel(
+    model,
+    contents,
+    enqueue,
+  );
+
+  try {
+    return parseAIResponse(accumulated);
+  } catch (error) {
+    console.error(
+      `[gen-ai-code] ${model} returned invalid JSON:`,
+      error,
+    );
+
+    console.warn(
+      `[gen-ai-code] Attempting JSON repair for ${model}...`,
+    );
+
+    try {
+      const repairResponse =
+        await ai.models.generateContent({
+          model: "gemini-3.5-flash-lite",
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text:
+                    "The following text is meant to be a single valid JSON object matching the required schema, but it is malformed or truncated. " +
+                    "Return ONLY the corrected, complete, valid JSON object. Do not include markdown fences or any commentary.\n\n" +
+                    accumulated,
+                },
+              ],
+            },
+          ],
+          config: {
+            responseMimeType:
+              "application/json",
+
+            responseJsonSchema:
+              AI_RESPONSE_JSON_SCHEMA,
+
+            temperature: 0,
+            maxOutputTokens: 65536,
+          },
+        });
+
+      return parseAIResponse(
+        repairResponse.text ?? "",
+      );
+    } catch (repairError) {
+      console.error(
+        "[gen-ai-code] JSON repair failed:",
+        repairError,
+      );
+
+      throw new Error(
+        "AI returned invalid JSON. Please try again.",
+      );
+    }
+  }
+}
+
 export async function POST(
   request: NextRequest,
 ) {
@@ -592,15 +668,14 @@ export async function POST(
             }),
           );
 
-          let accumulated = "";
+          let parsed: ParsedAIResponse;
 
           try {
-            accumulated =
-              await generateWithModel(
-                "gemini-3.5-flash",
-                contents,
-                enqueue,
-              );
+            parsed = await generateAndParse(
+              "gemini-3.5-flash",
+              contents,
+              enqueue,
+            );
 
             modelUsed =
               "gemini-3.5-flash";
@@ -611,16 +686,14 @@ export async function POST(
             );
 
             /**
-             * Only fallback when Gemini's quota
-             * or rate limit has been reached.
+             * Quota/rate-limit errors get a specific status line,
+             * but any failure of the primary model should retry on
+             * the Lite model before giving up.
              */
-            if (
-              !isGeminiQuotaError(
+            const quotaHit =
+              isGeminiQuotaError(
                 primaryError,
-              )
-            ) {
-              throw primaryError;
-            }
+              );
 
             /**
              * ========================================
@@ -634,8 +707,9 @@ export async function POST(
 
             enqueue(
               sseEvent("status", {
-                message:
-                  "Gemini 3.5 Flash limit reached. Switching to Gemini 3.5 Flash Lite...",
+                message: quotaHit
+                  ? "\n\n⚡ Primary model limit reached. Switching to Gemini 3.5 Flash Lite..."
+                  : "\n\n⚡ Primary model limit reached. Switching to Gemini 3.5 Flash Lite...",
                 model:
                   "gemini-3.5-flash-lite",
                 fallback: true,
@@ -644,8 +718,9 @@ export async function POST(
 
             enqueue(
               sseEvent("thinking", {
-                text:
-                  "\n\n⚡ Flash limit reached. Switching to Flash Lite...",
+                text: quotaHit
+                  ? "\n\n⚡ Flash limit reached. Switching to Flash Lite..."
+                  : "\n\n⚡ Retrying with Flash Lite...",
               }),
             );
 
@@ -657,12 +732,11 @@ export async function POST(
                *
                * This avoids continuing a broken stream.
                */
-              accumulated =
-                await generateWithModel(
-                  "gemini-3.5-flash-lite",
-                  contents,
-                  enqueue,
-                );
+              parsed = await generateAndParse(
+                "gemini-3.5-flash-lite",
+                contents,
+                enqueue,
+              );
             } catch (fallbackError) {
               console.error(
                 "[gen-ai-code] Fallback model error:",
@@ -673,83 +747,8 @@ export async function POST(
             }
           }
 
-          /**
-           * ========================================
-           * PARSE AI RESPONSE
-           * ========================================
-           */
-          let parsed: ParsedAIResponse;
-
-          try {
-            parsed = parseAIResponse(accumulated);
-          } catch (error) {
-            console.error(
-              "[gen-ai-code] Invalid JSON:",
-              error,
-            );
-
-            /**
-             * The primary output was malformed or truncated.
-             * Ask a fast model to repair it into valid JSON
-             * before giving up, so the user doesn't lose a generation.
-             */
-            console.warn(
-              "[gen-ai-code] Attempting JSON repair...",
-            );
-
-            try {
-              const repairResponse =
-                await ai.models.generateContent({
-                  model:
-                    "gemini-3.5-flash-lite",
-                  contents: [
-                    {
-                      role: "user",
-                      parts: [
-                        {
-                          text:
-                            "The following text is meant to be a single valid JSON object matching the required schema, but it is malformed or truncated. " +
-                            "Return ONLY the corrected, complete, valid JSON object. Do not include markdown fences or any commentary.\n\n" +
-                            accumulated,
-                        },
-                      ],
-                    },
-                  ],
-                  config: {
-                    responseMimeType:
-                      "application/json",
-
-                    responseJsonSchema:
-                      AI_RESPONSE_JSON_SCHEMA,
-
-                    temperature: 0,
-                    maxOutputTokens: 65536,
-                  },
-                });
-
-              parsed = parseAIResponse(
-                repairResponse.text ?? "",
-              );
-            } catch (repairError) {
-              console.error(
-                "[gen-ai-code] JSON repair failed:",
-                repairError,
-              );
-
-              enqueue(
-                sseEvent("error", {
-                  message:
-                    "AI returned invalid JSON. Please try again.",
-                }),
-              );
-
-              controller.close();
-              return;
-            }
-          }
-
           const {
-            assistantMessage,
+            assistantMessage = "Done",
             title: aiTitle,
             files,
             dependencies,
