@@ -345,45 +345,66 @@ async function generateWithModel(
   let accumulated = "";
   let lastEmitTime = 0;
 
-  for await (const chunk of geminiStream) {
-    const finishReason =
-      chunk.candidates?.[0]?.finishReason;
+  try {
+    for await (const chunk of geminiStream) {
+      const finishReason =
+        chunk.candidates?.[0]?.finishReason;
 
-    if (
-      finishReason &&
-      finishReason === "MAX_TOKENS"
-    ) {
-      console.warn(
-        `[gen-ai-code] ${model} hit MAX_TOKENS — response may be truncated.`,
-      );
-    }
-
-    const parts =
-      chunk.candidates?.[0]?.content?.parts ?? [];
-
-    for (const part of parts) {
-      if (!part.text) continue;
-
-      if (part.thought) {
-        const now = Date.now();
-
-        if (now - lastEmitTime > 600) {
-          const label =
-            extractThoughtLabel(part.text);
-
-          if (label) {
-            enqueue(
-              sseEvent("status", {
-                message: label,
-              }),
-            );
-
-            lastEmitTime = now;
-          }
-        }
-      } else {
-        accumulated += part.text;
+      if (
+        finishReason &&
+        finishReason === "MAX_TOKENS"
+      ) {
+        console.warn(
+          `[gen-ai-code] ${model} hit MAX_TOKENS — response may be truncated.`,
+        );
       }
+
+      const parts =
+        chunk.candidates?.[0]?.content?.parts ?? [];
+
+      for (const part of parts) {
+        if (!part.text) continue;
+
+        if (part.thought) {
+          const now = Date.now();
+
+          if (now - lastEmitTime > 600) {
+            const label =
+              extractThoughtLabel(part.text);
+
+            if (label) {
+              enqueue(
+                sseEvent("status", {
+                  message: label,
+                }),
+              );
+
+              lastEmitTime = now;
+            }
+          }
+        } else {
+          accumulated += part.text;
+        }
+      }
+    }
+  } catch (streamError) {
+    /**
+     * Gemini's streaming transport can end without its final SSE
+     * terminator (the SDK surfaces this as
+     * "Incomplete JSON segment at the end").
+     *
+     * That used to discard an otherwise complete response. Instead we
+     * keep whatever we already received and let the JSON repair step
+     * below finish/reconstruct it. We only rethrow when we got nothing
+     * at all, so quota-based fallback still works.
+     */
+    console.warn(
+      `[gen-ai-code] ${model} stream ended early; using partial output:`,
+      streamError,
+    );
+
+    if (!accumulated.trim()) {
+      throw streamError;
     }
   }
 
